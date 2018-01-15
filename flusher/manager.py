@@ -1,3 +1,4 @@
+from threading import Thread
 from time import sleep
 
 from arrow import utcnow
@@ -106,17 +107,22 @@ def update_failure(job_spec, message):
     return utcnow().isoformat()
 
 
-@instrumented(log.info)
 def add_log_line(job_args, result, error, start, end):
-    logs_sheet.append_row([
-         start,
-         end,
-         job_args['document'],
-         job_args['sheet'],
-         job_args['cellrange'],
-         'Failure' if error else 'Success',
-         error if error else result
-        ])
+    @instrumented(log.debug)
+    def addlog(*args):
+        return logs_sheet.append_row(*args)
+
+    Thread( target=addlog,
+            args=([
+                 start,
+                 end,
+                 job_args['document'],
+                 job_args['sheet'],
+                 job_args['cellrange'],
+                 'Failure' if error else 'Success',
+                 error if error else result
+                ],)
+    ).start()
 
 
 def should_run(job):
