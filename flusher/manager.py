@@ -7,10 +7,10 @@ from toolz import merge
 
 from flusher import gc, daiquiri
 from flusher.export import to_csv
+from flusher.refresh_interval import is_scheduled
 from flusher.utils import instrumented
 
 
-# TODO: refresh on a schedule
 # TODO: create own control sheet if it does not exists (and share with who?)
 # TODO: s3 destinations with boto and s3fs
 # TODO (ideally): redshift/bigquery destination with facility for table creation ...
@@ -97,17 +97,35 @@ def update_failure(job_spec, message):
 
     refresh_now = jobs_sheet.cell(row, 4)
     refresh_now.value = ''
+    refresh_interval = jobs_sheet.cell(row, 5)
+    refresh_interval.value = ''
     state = jobs_sheet.cell(row, 7)
     state.value = 'Failure'
     last_result = jobs_sheet.cell(row, 8)
     last_result.value = message
 
-    jobs_sheet.update_cells([refresh_now, state, last_result])
+    jobs_sheet.update_cells([refresh_now, refresh_interval, state, last_result])
 
     return utcnow().isoformat()
 
 
+@instrumented(log.debug)
+def update_invalid_schedule(job_spec, message):
+    row = job_spec['row']
+
+    refresh_interval = jobs_sheet.cell(row, 5)
+    refresh_interval.value = ''
+    state = jobs_sheet.cell(row, 7)
+    state.value = 'Failure'
+    last_result = jobs_sheet.cell(row, 8)
+    last_result.value = message
+
+    jobs_sheet.update_cells([refresh_interval, state, last_result])
+
+
 def add_log_line(job_args, result, error, start, end):
+    logs_sheet = control_doc.worksheet(MANAGER_LOGS_WORKSHEET)
+
     @instrumented(log.debug)
     def addlog(*args):
         return logs_sheet.append_row(*args)
@@ -127,16 +145,22 @@ def add_log_line(job_args, result, error, start, end):
 
 def should_run(job):
     return (not job['State'] == 'Running') \
-        and job['Refresh Now']
+        and (job['Refresh Now'] or is_scheduled(job))
 
 
 @instrumented(log.info)
 def run():
     while(True):
         sleep(1)
-        registered_jobs = read_control_sheet()
+        for job in read_control_sheet():
 
-        for job in registered_jobs:
+            if job['Refresh Interval']:
+                try:
+                    is_scheduled(job)
+                except Exception as e:
+                    update_invalid_schedule(job, e)
+                    continue
+
             if should_run(job):
                 start = update_running(job)
 
@@ -147,7 +171,7 @@ def run():
                        }
                 r, e = run_export(**args)
                 if e:
-                    end = update_failure(job,translate_error(e, args))
+                    end = update_failure(job, translate_error(e, args))
                 else:
                     end = update_success(job, r)
                 add_log_line(args, r, e, start, end)
@@ -155,5 +179,4 @@ def run():
 
 control_doc = gc.open(MANAGER_DOCUMENT)
 jobs_sheet = control_doc.worksheet(MANAGER_JOBS_WORKSHEET) if MANAGER_JOBS_WORKSHEET else control_doc.sheet1
-logs_sheet = control_doc.worksheet(MANAGER_LOGS_WORKSHEET)
 
