@@ -9,16 +9,17 @@ from flusher.export import to_csv
 from flusher.utils import instrumented
 
 
-# TODO: logs sheet (latest is higher)
 # TODO: refresh on a schedule
 # TODO: create own control sheet if it does not exists (and share with who?)
 # TODO: s3 destinations with boto and s3fs
+# TODO (ideally): redshift/bigquery destination with facility for table creation ...
 # TODO: parallelism with multiprocessing
 # TODO: inline documentation
 # TODO: better instructions on sheet
 
 MANAGER_DOCUMENT = 'Flush Control'
 MANAGER_JOBS_WORKSHEET = 'Jobs Manager'
+MANAGER_LOGS_WORKSHEET = 'Log'
 
 log = daiquiri.getLogger(__name__)
 
@@ -68,6 +69,8 @@ def update_running(job_spec):
 
     jobs_sheet.update_cells([refresh_now, state])
 
+    return utcnow().isoformat()
+
 
 @instrumented(log.debug)
 def update_success(job_spec, result):
@@ -84,6 +87,8 @@ def update_success(job_spec, result):
 
     jobs_sheet.update_cells([refresh_now, last_success, state, last_result])
 
+    return utcnow().isoformat()
+
 
 @instrumented(log.debug)
 def update_failure(job_spec, message):
@@ -97,6 +102,21 @@ def update_failure(job_spec, message):
     last_result.value = message
 
     jobs_sheet.update_cells([refresh_now, state, last_result])
+
+    return utcnow().isoformat()
+
+
+@instrumented(log.info)
+def add_log_line(job_args, result, error, start, end):
+    logs_sheet.append_row([
+         start,
+         end,
+         job_args['document'],
+         job_args['sheet'],
+         job_args['cellrange'],
+         'Failure' if error else 'Success',
+         error if error else result
+        ])
 
 
 def should_run(job):
@@ -112,7 +132,7 @@ def run():
 
         for job in registered_jobs:
             if should_run(job):
-                update_running(job)
+                start = update_running(job)
 
                 args = {
                         'document': job['Document'],
@@ -121,11 +141,13 @@ def run():
                        }
                 r, e = run_export(**args)
                 if e:
-                    update_failure(job,translate_error(e, args))
+                    end = update_failure(job,translate_error(e, args))
                 else:
-                    update_success(job, r)
+                    end = update_success(job, r)
+                add_log_line(args, r, e, start, end)
 
 
 control_doc = gc.open(MANAGER_DOCUMENT)
 jobs_sheet = control_doc.worksheet(MANAGER_JOBS_WORKSHEET) if MANAGER_JOBS_WORKSHEET else control_doc.sheet1
+logs_sheet = control_doc.worksheet(MANAGER_LOGS_WORKSHEET)
 

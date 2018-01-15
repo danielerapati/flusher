@@ -6,6 +6,7 @@ from flusher import gc, daiquiri
 
 # TODO: unit tests!!!
 # TODO: inline documentation!!!
+# TODO: save csv files in a specific directory
 
 log = daiquiri.getLogger(__name__)
 
