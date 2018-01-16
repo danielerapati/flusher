@@ -1,5 +1,7 @@
 arrow
 daiquiri
+google-cloud-bigquery
+google-cloud-core
 gspread
 oauth2client
 toolz
