@@ -1,3 +1,4 @@
+from os import remove
 from threading import Thread
 from time import sleep
 
@@ -7,16 +8,18 @@ from toolz import merge
 
 from flusher import gc, daiquiri
 from flusher.export import to_csv
+from flusher.load.bigquery import load as bqload
 from flusher.refresh_interval import is_scheduled
 from flusher.utils import instrumented
 
 
 # TODO: create own control sheet if it does not exists (and share with who?)
+# TODO: better instructions on sheet
 # TODO: s3 destinations with boto and s3fs
-# TODO (ideally): redshift/bigquery destination with facility for table creation ...
+# TODO: better errors, more information on runs (?better log messages?)
+# TODO (ideally): redshift destination with facility for table creation ...
 # TODO: parallelism with multiprocessing
 # TODO: inline documentation
-# TODO: better instructions on sheet
 
 MANAGER_DOCUMENT = 'Flush Control'
 MANAGER_JOBS_WORKSHEET = 'Jobs Manager'
@@ -36,6 +39,22 @@ def read_control_sheet():
 def run_export(document, sheet, cellrange):
     try:
         return (to_csv(document, sheet, cellrange), None)
+    except Exception as e:
+        return (None, e)
+
+
+
+@instrumented(log.info)
+def run_load(source_file, job_spec):
+    try:
+        target_system = job_spec['Target System'].lower().replace(' ','')
+        destination = job_spec['Destination'].lower().replace(' ','')
+        incremental = job_spec.get('Incremental')
+        if target_system == 'bigquery':
+            return (bqload(source_file, destination, incremental), None)
+        else:
+            raise NotImplementedError('Not Implemented: ' + target_system)
+
     except Exception as e:
         return (None, e)
 
@@ -63,9 +82,9 @@ Worksheets found: {candidates}.""".format(sheet=args['sheet'], candidates=candid
 def update_running(job_spec):
     row = job_spec['row']
 
-    refresh_now = jobs_sheet.cell(row, 4)
+    refresh_now = jobs_sheet.cell(row, 7)
     refresh_now.value = ''
-    state = jobs_sheet.cell(row, 7)
+    state = jobs_sheet.cell(row, 10)
     state.value = 'Running'
 
     jobs_sheet.update_cells([refresh_now, state])
@@ -77,13 +96,13 @@ def update_running(job_spec):
 def update_success(job_spec, result):
     row = job_spec['row']
 
-    refresh_now = jobs_sheet.cell(row, 4)
+    refresh_now = jobs_sheet.cell(row, 7)
     refresh_now.value = ''
-    last_success = jobs_sheet.cell(row, 6)
+    last_success = jobs_sheet.cell(row, 9)
     last_success.value = utcnow().isoformat()
-    state = jobs_sheet.cell(row, 7)
+    state = jobs_sheet.cell(row, 10)
     state.value = 'Success'
-    last_result = jobs_sheet.cell(row, 8)
+    last_result = jobs_sheet.cell(row, 11)
     last_result.value = result
 
     jobs_sheet.update_cells([refresh_now, last_success, state, last_result])
@@ -95,13 +114,13 @@ def update_success(job_spec, result):
 def update_failure(job_spec, message):
     row = job_spec['row']
 
-    refresh_now = jobs_sheet.cell(row, 4)
+    refresh_now = jobs_sheet.cell(row, 7)
     refresh_now.value = ''
-    refresh_interval = jobs_sheet.cell(row, 5)
+    refresh_interval = jobs_sheet.cell(row, 8)
     refresh_interval.value = ''
-    state = jobs_sheet.cell(row, 7)
+    state = jobs_sheet.cell(row, 10)
     state.value = 'Failure'
-    last_result = jobs_sheet.cell(row, 8)
+    last_result = jobs_sheet.cell(row, 11)
     last_result.value = message
 
     jobs_sheet.update_cells([refresh_now, refresh_interval, state, last_result])
@@ -113,11 +132,11 @@ def update_failure(job_spec, message):
 def update_invalid_schedule(job_spec, message):
     row = job_spec['row']
 
-    refresh_interval = jobs_sheet.cell(row, 5)
+    refresh_interval = jobs_sheet.cell(row, 8)
     refresh_interval.value = ''
-    state = jobs_sheet.cell(row, 7)
+    state = jobs_sheet.cell(row, 10)
     state.value = 'Failure'
-    last_result = jobs_sheet.cell(row, 8)
+    last_result = jobs_sheet.cell(row, 11)
     last_result.value = message
 
     jobs_sheet.update_cells([refresh_interval, state, last_result])
@@ -153,7 +172,7 @@ def run():
     while(True):
         sleep(1)
         for job in read_control_sheet():
-
+            # TODO: this God-Method is in dire need of refactoring
             if job['Refresh Interval']:
                 try:
                     is_scheduled(job)
@@ -169,12 +188,18 @@ def run():
                         'sheet': job['Sheet'],
                         'cellrange': job['Range']
                        }
-                r, e = run_export(**args)
-                if e:
-                    end = update_failure(job, translate_error(e, args))
+                result, error = run_export(**args)
+
+                if not error and job['Target System']:
+                    temp_file = result
+                    result, error = run_load(temp_file, job)
+                    remove(temp_file)
+
+                if error:
+                    end = update_failure(job, translate_error(error, args))
                 else:
-                    end = update_success(job, r)
-                add_log_line(args, r, e, start, end)
+                    end = update_success(job, result)
+                add_log_line(args, result, error, start, end)
 
 
 control_doc = gc.open(MANAGER_DOCUMENT)

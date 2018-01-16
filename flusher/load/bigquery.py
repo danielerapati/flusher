@@ -21,8 +21,9 @@ def load_from_file(file_path, table):
     load_config.autodetect = True
 
     with open(file_path, 'rb') as readable:
-        client.load_table_from_file(readable, table_ref, job_config=load_config)
+        result = client.load_table_from_file(readable, table_ref, job_config=load_config)
 
+    # return result
     return table_ref.dataset_id + '.' + table_ref.table_id
 
 
@@ -38,6 +39,8 @@ def delete(table_name):
 
 
 def load(file_path, table, incremental=False):
-    if not incremental and table_exists(table_name):
+    # TODO: return something more informative! how many rows loaded, how many new, the table name, etc.
+    # TODO: some safety around deleting tables
+    if not incremental and table_exists(table):
         delete(table)
     return load_from_file(file_path, table)
