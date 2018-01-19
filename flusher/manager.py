@@ -16,10 +16,12 @@ from flusher.utils import instrumented
 # TODO: create own control sheet if it does not exists (and share with who?)
 # TODO: better instructions on sheet
 # TODO: s3 destinations with boto and s3fs
+# TODO: discover jobs manager worksheet structure rather than hard-coding it
 # TODO: better errors, more information on runs (?better log messages?)
 # TODO (ideally): redshift destination with facility for table creation ...
 # TODO: parallelism with multiprocessing
 # TODO: inline documentation
+# TODO: Job class
 
 MANAGER_DOCUMENT = 'Flush Control'
 MANAGER_JOBS_WORKSHEET = 'Jobs Manager'
@@ -162,44 +164,54 @@ def add_log_line(job_args, result, error, start, end):
     ).start()
 
 
+def filter_fixing_invalid_schedules(jobs):
+    for job in jobs:
+        if job['Refresh Interval']:
+            try:
+                is_scheduled(job)
+            except Exception as e:
+                update_invalid_schedule(job, e)
+                continue
+        yield job
+
+
 def should_run(job):
     return (not job['State'] == 'Running') \
         and (job['Refresh Now'] or is_scheduled(job))
+
+
+def run_job(job):
+    start = update_running(job)
+
+    args = {
+            'document': job['Document'],
+            'sheet': job['Sheet'],
+            'cellrange': job['Range']
+           }
+    result, error = run_export(**args)
+
+    if not error and job['Target System']:
+        temp_file = result
+        result, error = run_load(temp_file, job)
+        remove(temp_file)
+
+    if error:
+        end = update_failure(job, translate_error(error, args))
+    else:
+        end = update_success(job, result)
+
+    return args, result, error, start, end
 
 
 @instrumented(log.info)
 def run():
     while(True):
         sleep(1)
-        for job in read_control_sheet():
-            # TODO: this God-Method is in dire need of refactoring
-            if job['Refresh Interval']:
-                try:
-                    is_scheduled(job)
-                except Exception as e:
-                    update_invalid_schedule(job, e)
-                    continue
-
+        all_jobs = read_control_sheet()
+        for job in filter_fixing_invalid_schedules(all_jobs):
             if should_run(job):
-                start = update_running(job)
-
-                args = {
-                        'document': job['Document'],
-                        'sheet': job['Sheet'],
-                        'cellrange': job['Range']
-                       }
-                result, error = run_export(**args)
-
-                if not error and job['Target System']:
-                    temp_file = result
-                    result, error = run_load(temp_file, job)
-                    remove(temp_file)
-
-                if error:
-                    end = update_failure(job, translate_error(error, args))
-                else:
-                    end = update_success(job, result)
-                add_log_line(args, result, error, start, end)
+                run_report = run_job(job)
+                add_log_line(*run_report)
 
 
 control_doc = gc.open(MANAGER_DOCUMENT)

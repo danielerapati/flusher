@@ -5,6 +5,7 @@ from google.cloud import bigquery
 from google.cloud.bigquery import LoadJobConfig
 
 
+# TODO: support for multiple datasets
 DATASET_NAME = 'g_sheets'
 
 client = bigquery.Client().from_service_account_json('service-account-key.json')
