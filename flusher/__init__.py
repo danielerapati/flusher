@@ -16,5 +16,6 @@ scope = ['https://spreadsheets.google.com/feeds']
 
 credentials = ServiceAccountCredentials.from_json_keyfile_name('service-account-key.json', scope)
 
+# TODO: reauthorize when connection fails ... token expires after a few hours
 gc = gspread.authorize(credentials)
 
