@@ -5,10 +5,10 @@ import logging
 from oauth2client.service_account import ServiceAccountCredentials
 
 
-default_log_format = daiquiri.formatter.DEFAULT_FORMAT.replace('%(name)s','%(name)s.%(funcName)s')
+DEFAULT_LOG_FORMAT = daiquiri.formatter.DEFAULT_FORMAT.replace('%(name)s', '%(name)s.%(funcName)s')
 daiquiri.setup(level=logging.INFO, outputs=(
     daiquiri.output.Stream(formatter=daiquiri.formatter.ColorFormatter(
-        fmt=default_log_format)),
+        fmt=DEFAULT_LOG_FORMAT)),
     ))
 
 

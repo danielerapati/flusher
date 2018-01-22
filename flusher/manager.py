@@ -35,8 +35,8 @@ gc = connect()
 @instrumented(log.debug)
 def read_control_sheet():
     return [merge(spec, {'row': rnumber+2}) # zero-based + 1 row of header
-                for rnumber,spec in enumerate(jobs_sheet.get_all_records())
-                if spec['Document']]
+            for rnumber, spec in enumerate(jobs_sheet.get_all_records())
+            if spec['Document']]
 
 
 @instrumented(log.info)
@@ -47,12 +47,11 @@ def run_export(document, sheet, cellrange):
         return (None, e)
 
 
-
 @instrumented(log.info)
 def run_load(source_file, job_spec):
     try:
-        target_system = job_spec['Target System'].lower().replace(' ','')
-        destination = job_spec['Destination'].lower().replace(' ','')
+        target_system = job_spec['Target System'].lower().replace(' ', '')
+        destination = job_spec['Destination'].lower().replace(' ', '')
         incremental = job_spec.get('Incremental')
         if target_system == 'bigquery':
             return (bqload(source_file, destination, incremental), None)
@@ -153,15 +152,15 @@ def add_log_line(job_args, result, error, start, end):
     def addlog(*args):
         return logs_sheet.append_row(*args)
 
-    Thread( target=addlog,
-            args=([
-                 start,
-                 end,
-                 job_args['document'],
-                 job_args['sheet'],
-                 job_args['cellrange'],
-                 'Failure' if error else 'Success',
-                 error if error else result
+    Thread(target=addlog,
+           args=([
+                start,
+                end,
+                job_args['document'],
+                job_args['sheet'],
+                job_args['cellrange'],
+                'Failure' if error else 'Success',
+                error if error else result
                 ],)
     ).start()
 

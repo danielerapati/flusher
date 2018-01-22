@@ -20,7 +20,7 @@ def only_rangeletters(s):
 
 
 def colnumber(letters):
-    return sum((ord(c)-64)*(25**(i)) for i,c in enumerate(letters))
+    return sum((ord(c)-64)*(25**(i)) for i, c in enumerate(letters))
 
 
 def numcolumns_from_range(cellrange):
@@ -58,7 +58,7 @@ def to_csv(document, sheet='', cellrange=''):
         raw_data = [cell for row in list_lists for cell in row]
         cellrange = 'all'
 
-    output_filename = '.'.join([document, sheet, cellrange, now_str(),'csv'])
+    output_filename = '.'.join([document, sheet, cellrange, now_str(), 'csv'])
 
     with open(output_filename, 'w') as fp:
         writer = csv.writer(fp, quoting=csv.QUOTE_NONNUMERIC)
@@ -66,4 +66,3 @@ def to_csv(document, sheet='', cellrange=''):
             writer.writerow(raw_data[rowcell:rowcell+numbercolumns])
 
     return output_filename
-
