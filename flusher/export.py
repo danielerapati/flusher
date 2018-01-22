@@ -1,7 +1,7 @@
 import arrow
 import csv
 
-from flusher import gc, daiquiri
+from flusher import connect, daiquiri
 
 
 # TODO: unit tests!!!
@@ -33,6 +33,8 @@ def numrows(worksheet):
 
 
 def to_csv(document, sheet='', cellrange=''):
+    gc = connect()
+
     # TODO: make it possible to specify the document by name, url or id
     sh = gc.open(document)
     # TODO: make it possible to specify the sheet by number or name

@@ -6,7 +6,7 @@ from arrow import utcnow
 from gspread.exceptions import *
 from toolz import merge
 
-from flusher import gc, daiquiri
+from flusher import connect, daiquiri
 from flusher.export import to_csv
 from flusher.load.bigquery import load as bqload
 from flusher.refresh_interval import is_scheduled
@@ -28,6 +28,8 @@ MANAGER_JOBS_WORKSHEET = 'Jobs Manager'
 MANAGER_LOGS_WORKSHEET = 'Log'
 
 log = daiquiri.getLogger(__name__)
+
+gc = connect()
 
 
 @instrumented(log.debug)
