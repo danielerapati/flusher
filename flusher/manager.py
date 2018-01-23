@@ -29,7 +29,12 @@ MANAGER_LOGS_WORKSHEET = 'Log'
 
 log = daiquiri.getLogger(__name__)
 
-gc = connect()
+
+def initialize():
+    global gc, control_doc, jobs_sheet
+    gc = connect()
+    control_doc = gc.open(MANAGER_DOCUMENT)
+    jobs_sheet = control_doc.worksheet(MANAGER_JOBS_WORKSHEET) if MANAGER_JOBS_WORKSHEET else control_doc.sheet1
 
 
 @instrumented(log.debug)
@@ -208,13 +213,18 @@ def run_job(job):
 def run():
     while(True):
         sleep(1)
-        all_jobs = read_control_sheet()
+
+        try:
+            all_jobs = read_control_sheet()
+        except RequestError as e:
+            log.warn(e)
+            initialize()
+            continue
+
         for job in filter_fixing_invalid_schedules(all_jobs):
             if should_run(job):
                 run_report = run_job(job)
                 add_log_line(*run_report)
 
 
-control_doc = gc.open(MANAGER_DOCUMENT)
-jobs_sheet = control_doc.worksheet(MANAGER_JOBS_WORKSHEET) if MANAGER_JOBS_WORKSHEET else control_doc.sheet1
-
+initialize()
